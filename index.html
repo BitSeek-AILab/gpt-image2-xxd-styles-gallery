@@ -133,6 +133,25 @@ body[data-mode="orig"] .only-mine{display:none}
 .fbc::placeholder{color:#b3ada2}
 .agg{margin-top:8px;font-size:12px;color:var(--mut)}
 .agg b{color:var(--accent)}
+.aggh{margin-bottom:5px}
+.ents>summary{cursor:pointer;font-size:11.5px;color:#55504a;list-style:none;display:flex;
+ align-items:center;gap:5px}
+.ents>summary::-webkit-details-marker{display:none}
+.ents>summary::before{content:"▸";color:var(--mut);transition:.15s}
+.ents[open]>summary::before{transform:rotate(90deg)}
+.ent{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap;padding:4px 0;
+ border-top:1px dotted var(--line);font-size:11.5px}
+.ent.off{opacity:.45}
+.ent .who{font-weight:700;color:#4a463f;min-width:56px}
+.ent .st{color:#e0a32e;letter-spacing:-1px}
+.ent .tg{color:var(--mut)}
+.ent .cm{color:var(--ink);font-style:italic}
+.ent .rt{color:#b04a3a;font-weight:600}
+.ent a{color:var(--mut);text-decoration:none}
+.ent a:hover{text-decoration:underline}
+.fdel{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:999px;
+ font-size:11px;padding:2px 9px;cursor:pointer;color:var(--mut);font-family:inherit}
+.fdel:hover{border-color:#c9c3b8;color:var(--ink)}
 @media(max-width:700px){#lb .prev{left:8px}#lb .next{right:8px}
  #lb button{width:42px;height:42px;font-size:21px}}
 /* floating feedback toolbar */
@@ -4541,23 +4560,58 @@ document.querySelector('#fbar').addEventListener('click',async e=>{
  if(act==='submit'){
   const p=fbPayload();
   if(!p.count){alert('还没有评价。先给几个风格打星或勾选标签。');return;}
-  const lines=p.items.map(i=>`- ${i.name}  |  ${i.stars}/5  |  ${(i.tags||[]).join('、')||'—'}  |  ${i.comment||'—'}`);
+  // GitHub rejects very long URLs; keep the strongest subset and say so.
+  const MAXN=40;
+  const kept=p.items.slice(0,MAXN);
+  const dropped=p.items.length-kept.length;
+  const lines=kept.map(i=>`- ${i.name}  |  ${i.stars}/5  |  ${(i.tags||[]).join('、')||'—'}  |  ${i.comment||'—'}`);
   const body='### 风格评价\n\n'+lines.join('\n')+
+   (dropped?('\n\n> 还有 '+dropped+' 条未列入（URL 长度限制），可自行补充。'):'')+
    '\n\n---\n共 '+p.count+' 条，由画廊页面导出（'+p.at+'）。\n'+
    '> 也可以直接改这段文字。提交后会被回收进 feedback.json 展示给所有人。';
   const url='https://github.com/'+ISSUE_REPO+'/issues/new?title='+
    encodeURIComponent('风格评价 · '+p.count+' 条 · '+new Date().toISOString().slice(0,10))+
    '&body='+encodeURIComponent(body)+'&labels=feedback';
-  window.open(url,'_blank','noopener');return;}
+  // An anchor click, not window.open. window.open(url,'_blank','noopener') passes
+  // a features string, which browsers treat as a POPUP and block - the click
+  // appeared to do nothing at all. An anchor click is ordinary navigation.
+  const a=document.createElement('a');
+  a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+  document.body.appendChild(a);a.click();a.remove();
+  return;}
 });
 
-/* aggregate from feedback.json, written by collect_feedback.py */
+/* aggregate from feedback.json, written by collect_feedback.py.
+   Every rating is its own GitHub issue, so one person's submission can never
+   overwrite another's. A closed issue is shown as retracted rather than dropped. */
 fetch('feedback.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>{
  if(!d||!d.styles)return;
  document.querySelectorAll('.fb').forEach(el=>{
   const a=d.styles[el.dataset.style]; if(!a)return;
   const tags=(a.top_tags||[]).map(t=>t[0]+'×'+t[1]).join(' · ');
-  el.querySelector('.agg').innerHTML='大家：<b>'+(a.avg||0).toFixed(1)+'</b> 分 / '+
-   (a.n||0)+' 人'+(tags?('　'+tags):'');});
+  const open=(a.entries||[]).filter(e=>e.state==='OPEN');
+  let h='<div class="aggh">大家 <b>'+(a.avg||0).toFixed(1)+'</b> 分 · '+
+        open.length+' 人评过'+(tags?(' · '+tags):'')+'</div>';
+  const rows=(a.entries||[]).slice(0,6).map(e=>{
+   const off=e.state!=='OPEN';
+   return '<div class="ent'+(off?' off':'')+'"><span class="who">'+e.by+'</span>'+
+     '<span class="st">'+'★'.repeat(e.stars)+'</span>'+
+     (e.tags&&e.tags.length?('<span class="tg">'+e.tags.join('、')+'</span>'):'')+
+     (e.comment?('<span class="cm">'+e.comment+'</span>'):'')+
+     (off?'<span class="rt">已撤回</span>':'')+
+     ' <a href="https://github.com/BitSeek-AILab/gpt-image2-xxd-styles-gallery/issues/'+e.issue+
+     '" target="_blank" rel="noopener">#'+e.issue+'</a></div>';}).join('');
+  if(rows)h+='<details class="ents"><summary>逐条评价（'+a.entries.length+
+    '）—— 想删自己的？点右侧 #号去你的 issue 编辑或关闭</summary>'+rows+'</details>';
+  el.querySelector('.agg').innerHTML=h;
+ });
 }).catch(()=>{});
+
+/* delete MY OWN local rating for this card only */
+document.querySelectorAll('.fb').forEach(el=>{
+ const b=document.createElement('button');
+ b.type='button';b.className='fdel';b.textContent='清除我的';b.title='只清除本机保存的这一条';
+ b.onclick=()=>{delete fb[el.dataset.style];save();location.reload();};
+ el.querySelector('.fbrow').appendChild(b);
+});
 </script></body></html>
