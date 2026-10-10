@@ -1,8 +1,9 @@
 {
-  "source": "github.com/BitSeek-AILab/gpt-image2-xxd-styles-gallery/issues?q=label:feedback",
+  "source": null,
   "issues": 0,
   "rated_styles": 0,
   "total_ratings": 0,
   "open_ratings": 0,
-  "styles": {}
+  "styles": {},
+  "_note": "Obsolete. The gallery no longer has a rating/comment feature (removed 2026-10-10 by user decision), so nothing collects or reads this file. Kept only so the published URL does not 404 for a browser still holding the old cached page."
 }
